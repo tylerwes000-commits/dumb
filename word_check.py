@@ -8,6 +8,8 @@ from pathlib import Path
 WORD_LIST = Path(__file__).with_name("four_letter_words.txt")
 NEIGHBOR_CACHE = Path(__file__).with_name("neighbors.txt")
 PRIORITY_WORD = "poop"
+# Bump the version when the cache format changes so old caches get rebuilt.
+CACHE_HEADER = "#v2:"
 PRIORITY_STEPS = Path(__file__).with_name(f"{PRIORITY_WORD}_steps.txt")
 
 
@@ -47,27 +49,40 @@ def word_list_fingerprint(words):
 def build_neighbor_cache(words, path=NEIGHBOR_CACHE):
     """Precompute one_letter_off for every word that can reach the priority word and save it.
 
-    Words with no chain of one-letter changes to the priority word are left out entirely.
+    Each neighbor is saved with its nearness to the priority word (its step count, as a
+    double), e.g. "tree:bree=5.0,dree=5.0,...". Words with no chain of one-letter changes
+    to the priority word are left out entirely.
     """
     full_map = {word: one_letter_off(word, words) for word in sorted(words)}
-    reachable, _ = steps_from_priority(full_map)
-    neighbor_map = {word: full_map[word] for word in sorted(reachable)}
+    steps, _ = steps_from_priority(full_map)
+    neighbor_map = {
+        word: {neighbor: float(steps[neighbor]) for neighbor in full_map[word]}
+        for word in sorted(steps)
+    }
     with open(path, "w") as f:
-        f.write(f"#{word_list_fingerprint(words)}\n")
+        f.write(f"{CACHE_HEADER}{word_list_fingerprint(words)}\n")
         for word, neighbors in neighbor_map.items():
-            f.write(f"{word}:{','.join(neighbors)}\n")
+            entries = ",".join(f"{n}={nearness}" for n, nearness in neighbors.items())
+            f.write(f"{word}:{entries}\n")
     return neighbor_map
 
 
 def load_neighbor_cache(words, path=NEIGHBOR_CACHE):
-    """Load the saved neighbor map, rebuilding it if missing or out of date with the word list."""
+    """Load the saved neighbor map, rebuilding it if missing or out of date with the word list.
+
+    Returns {word: {neighbor: nearness}}, where nearness is the neighbor's step count
+    to the priority word as a float.
+    """
     try:
         with open(path) as f:
-            if f.readline().strip() == f"#{word_list_fingerprint(words)}":
+            if f.readline().strip() == f"{CACHE_HEADER}{word_list_fingerprint(words)}":
                 neighbor_map = {}
                 for line in f:
                     word, _, neighbors = line.strip().partition(":")
-                    neighbor_map[word] = neighbors.split(",") if neighbors else []
+                    neighbor_map[word] = {
+                        n: float(nearness)
+                        for n, _, nearness in (entry.partition("=") for entry in neighbors.split(","))
+                    } if neighbors else {}
                 return neighbor_map
     except OSError:
         pass
@@ -143,7 +158,8 @@ def main():
             print(f"'{text.strip()}' is NOT a real word.")
         word = text.strip().lower()
         neighbors = neighbor_map[word] if word in neighbor_map else one_letter_off(word, words)
-        print(f"Words one letter off: {', '.join(neighbors) if neighbors else '(none)'}")
+        listed = [f"{n} ({steps[n]:.1f})" if n in steps else n for n in neighbors]
+        print(f"Words one letter off (steps to {PRIORITY_WORD}): {', '.join(listed) if listed else '(none)'}")
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)
