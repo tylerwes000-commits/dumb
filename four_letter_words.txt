@@ -2637,7 +2637,6 @@ pome
 pomp
 poms
 pond
-pone
 pong
 pons
 pony
