@@ -1,4 +1,4 @@
-"""Check whether a 4-letter input is a valid Scrabble word (ENABLE word list)."""
+"""Check whether a 4-letter input is a common English word (ENABLE Scrabble list filtered to SCOWL size 35)."""
 
 import hashlib
 import sys
