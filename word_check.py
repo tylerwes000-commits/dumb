@@ -1,11 +1,13 @@
 """Check whether a 4-letter input is a valid Scrabble word (ENABLE word list)."""
 
 import sys
+from collections import deque
 from pathlib import Path
 
 WORD_LIST = Path(__file__).with_name("four_letter_words.txt")
 NEIGHBOR_CACHE = Path(__file__).with_name("neighbors.txt")
 PRIORITY_WORD = "poop"
+PRIORITY_STEPS = Path(__file__).with_name(f"{PRIORITY_WORD}_steps.txt")
 
 
 def load_words(path=WORD_LIST):
@@ -60,24 +62,69 @@ def load_neighbor_cache(words, path=NEIGHBOR_CACHE):
     return build_neighbor_cache(words, path)
 
 
-def priority_relation(text, neighbor_map, words, priority=PRIORITY_WORD):
-    """Describe how text relates to the priority word: the same word, one letter off, or neither."""
+def steps_from_priority(neighbor_map, priority=PRIORITY_WORD):
+    """Breadth-first search out from the priority word.
+
+    Returns (steps, parent): steps maps each reachable word to how many one-letter
+    changes it is from the priority word; parent maps each word to the next word
+    on a shortest path back toward it.
+    """
+    steps = {priority: 0}
+    parent = {priority: None}
+    queue = deque([priority])
+    while queue:
+        word = queue.popleft()
+        for neighbor in neighbor_map.get(word, []):
+            if neighbor not in steps:
+                steps[neighbor] = steps[word] + 1
+                parent[neighbor] = word
+                queue.append(neighbor)
+    return steps, parent
+
+
+def save_priority_steps(words, steps, path=PRIORITY_STEPS):
+    """Write every word's step count to the priority word, one line per word."""
+    with open(path, "w") as f:
+        for word in sorted(words):
+            f.write(f"{word}:{steps.get(word, 'unreachable')}\n")
+
+
+def path_to_priority(text, neighbor_map, words, steps, parent):
+    """Return the shortest list of words from text to the priority word, or None if unreachable."""
     text = text.strip().lower()
-    if text == priority:
-        return f"'{text}' IS '{priority}'."
-    neighbors = neighbor_map[priority] if priority in neighbor_map else one_letter_off(priority, words)
-    if text in neighbors:
-        return f"'{text}' is one letter off from '{priority}'!"
-    return f"'{text}' is not related to '{priority}'."
+    if text in steps:
+        start = text
+        path = []
+    else:
+        # Not in the word list: step to its closest real neighbor first.
+        reachable = [n for n in one_letter_off(text, words) if n in steps]
+        if not reachable:
+            return None
+        start = min(reachable, key=lambda n: (steps[n], n))
+        path = [text]
+    while start is not None:
+        path.append(start)
+        start = parent[start]
+    return path
 
 
 def main():
     words = load_words()
     neighbor_map = load_neighbor_cache(words)
     text = sys.argv[1] if len(sys.argv) > 1 else input("Enter a 4-letter word: ")
+    if text.strip().lower() == "--all":
+        steps, _ = steps_from_priority(neighbor_map)
+        save_priority_steps(words, steps)
+        print(f"Saved step counts for {len(words)} words to {PRIORITY_STEPS.name}")
+        return
     try:
         is_real = is_real_word(text, words)
-        print(priority_relation(text, neighbor_map, words))
+        steps, parent = steps_from_priority(neighbor_map)
+        path = path_to_priority(text, neighbor_map, words, steps, parent)
+        if path is None:
+            print(f"'{text.strip()}' can't reach '{PRIORITY_WORD}'.")
+        else:
+            print(f"'{text.strip()}' is {len(path) - 1} step(s) from '{PRIORITY_WORD}': {' -> '.join(path)}")
         if is_real:
             print(f"'{text.strip()}' is a real word.")
         else:
