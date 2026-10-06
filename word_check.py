@@ -1,4 +1,4 @@
-"""Check whether a 4-letter input is a real English word."""
+"""Check whether a 4-letter input is a valid Scrabble word (ENABLE word list)."""
 
 import sys
 from pathlib import Path
