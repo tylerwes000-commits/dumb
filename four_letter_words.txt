@@ -2635,7 +2635,6 @@ pols
 poly
 pome
 pomp
-poms
 pond
 pong
 pons
