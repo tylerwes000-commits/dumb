@@ -19,6 +19,21 @@ def is_real_word(text, words):
     return text in words
 
 
+def one_letter_off(text, words):
+    """Return every word in the list that differs from text by exactly one letter."""
+    text = text.strip().lower()
+    if len(text) != 4 or not text.isalpha():
+        raise ValueError("Input must be exactly 4 letters (a-z).")
+    neighbors = []
+    for i in range(len(text)):
+        for c in "abcdefghijklmnopqrstuvwxyz":
+            if c != text[i]:
+                candidate = text[:i] + c + text[i + 1:]
+                if candidate in words:
+                    neighbors.append(candidate)
+    return sorted(neighbors)
+
+
 def main():
     words = load_words()
     text = sys.argv[1] if len(sys.argv) > 1 else input("Enter a 4-letter word: ")
@@ -27,6 +42,8 @@ def main():
             print(f"'{text.strip()}' is a real word.")
         else:
             print(f"'{text.strip()}' is NOT a real word.")
+        neighbors = one_letter_off(text, words)
+        print(f"Words one letter off: {', '.join(neighbors) if neighbors else '(none)'}")
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)
