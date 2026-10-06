@@ -5,6 +5,7 @@ from pathlib import Path
 
 WORD_LIST = Path(__file__).with_name("four_letter_words.txt")
 NEIGHBOR_CACHE = Path(__file__).with_name("neighbors.txt")
+PRIORITY_WORD = "poop"
 
 
 def load_words(path=WORD_LIST):
@@ -59,12 +60,25 @@ def load_neighbor_cache(words, path=NEIGHBOR_CACHE):
     return build_neighbor_cache(words, path)
 
 
+def priority_relation(text, neighbor_map, words, priority=PRIORITY_WORD):
+    """Describe how text relates to the priority word: the same word, one letter off, or neither."""
+    text = text.strip().lower()
+    if text == priority:
+        return f"'{text}' IS '{priority}'."
+    neighbors = neighbor_map[priority] if priority in neighbor_map else one_letter_off(priority, words)
+    if text in neighbors:
+        return f"'{text}' is one letter off from '{priority}'!"
+    return f"'{text}' is not related to '{priority}'."
+
+
 def main():
     words = load_words()
     neighbor_map = load_neighbor_cache(words)
     text = sys.argv[1] if len(sys.argv) > 1 else input("Enter a 4-letter word: ")
     try:
-        if is_real_word(text, words):
+        is_real = is_real_word(text, words)
+        print(priority_relation(text, neighbor_map, words))
+        if is_real:
             print(f"'{text.strip()}' is a real word.")
         else:
             print(f"'{text.strip()}' is NOT a real word.")
