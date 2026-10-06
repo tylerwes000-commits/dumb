@@ -1,5 +1,6 @@
 """Check whether a 4-letter input is a valid Scrabble word (ENABLE word list)."""
 
+import hashlib
 import sys
 from collections import deque
 from pathlib import Path
@@ -38,10 +39,21 @@ def one_letter_off(text, words):
     return sorted(neighbors)
 
 
+def word_list_fingerprint(words):
+    """Hash of the word list, stored in the cache header to detect a changed list."""
+    return hashlib.sha256("\n".join(sorted(words)).encode()).hexdigest()
+
+
 def build_neighbor_cache(words, path=NEIGHBOR_CACHE):
-    """Precompute one_letter_off for every word and save it, one line per word."""
-    neighbor_map = {word: one_letter_off(word, words) for word in sorted(words)}
+    """Precompute one_letter_off for every word that can reach the priority word and save it.
+
+    Words with no chain of one-letter changes to the priority word are left out entirely.
+    """
+    full_map = {word: one_letter_off(word, words) for word in sorted(words)}
+    reachable, _ = steps_from_priority(full_map)
+    neighbor_map = {word: full_map[word] for word in sorted(reachable)}
     with open(path, "w") as f:
+        f.write(f"#{word_list_fingerprint(words)}\n")
         for word, neighbors in neighbor_map.items():
             f.write(f"{word}:{','.join(neighbors)}\n")
     return neighbor_map
@@ -51,12 +63,12 @@ def load_neighbor_cache(words, path=NEIGHBOR_CACHE):
     """Load the saved neighbor map, rebuilding it if missing or out of date with the word list."""
     try:
         with open(path) as f:
-            neighbor_map = {}
-            for line in f:
-                word, _, neighbors = line.strip().partition(":")
-                neighbor_map[word] = neighbors.split(",") if neighbors else []
-        if neighbor_map.keys() == words:
-            return neighbor_map
+            if f.readline().strip() == f"#{word_list_fingerprint(words)}":
+                neighbor_map = {}
+                for line in f:
+                    word, _, neighbors = line.strip().partition(":")
+                    neighbor_map[word] = neighbors.split(",") if neighbors else []
+                return neighbor_map
     except OSError:
         pass
     return build_neighbor_cache(words, path)
@@ -82,11 +94,11 @@ def steps_from_priority(neighbor_map, priority=PRIORITY_WORD):
     return steps, parent
 
 
-def save_priority_steps(words, steps, path=PRIORITY_STEPS):
-    """Write every word's step count to the priority word, one line per word."""
+def save_priority_steps(steps, path=PRIORITY_STEPS):
+    """Write the step count to the priority word for every word that can reach it."""
     with open(path, "w") as f:
-        for word in sorted(words):
-            f.write(f"{word}:{steps.get(word, 'unreachable')}\n")
+        for word in sorted(steps):
+            f.write(f"{word}:{steps[word]}\n")
 
 
 def path_to_priority(text, neighbor_map, words, steps, parent):
@@ -114,8 +126,8 @@ def main():
     text = sys.argv[1] if len(sys.argv) > 1 else input("Enter a 4-letter word: ")
     if text.strip().lower() == "--all":
         steps, _ = steps_from_priority(neighbor_map)
-        save_priority_steps(words, steps)
-        print(f"Saved step counts for {len(words)} words to {PRIORITY_STEPS.name}")
+        save_priority_steps(steps)
+        print(f"Saved step counts for {len(steps)} words to {PRIORITY_STEPS.name}")
         return
     try:
         is_real = is_real_word(text, words)
