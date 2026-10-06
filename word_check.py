@@ -116,23 +116,40 @@ def save_priority_steps(steps, path=PRIORITY_STEPS):
             f.write(f"{word}:{steps[word]}\n")
 
 
-def path_to_priority(text, neighbor_map, words, steps, parent):
-    """Return the shortest list of words from text to the priority word, or None if unreachable."""
-    text = text.strip().lower()
-    if text in steps:
-        start = text
-        path = []
-    else:
-        # Not in the word list: step to its closest real neighbor first.
-        reachable = [n for n in one_letter_off(text, words) if n in steps]
-        if not reachable:
-            return None
-        start = min(reachable, key=lambda n: (steps[n], n))
-        path = [text]
-    while start is not None:
-        path.append(start)
-        start = parent[start]
-    return path
+def path_to_priority(text, neighbor_map, words, priority=PRIORITY_WORD):
+    """Depth-first search from text to the priority word using the saved first-order relations.
+
+    At each word the neighbors are tried nearest-first (lowest saved nearness), and the
+    first path that reaches the priority word is returned. Because nearness is the exact
+    step count, the nearest neighbor is always one step closer, so the first path found
+    is also a shortest one. Returns None if the priority word can't be reached.
+    """
+    def relations(word):
+        if word in neighbor_map:
+            return neighbor_map[word]
+        # Not in the saved relations (e.g. not a real word): find its neighbors live and
+        # take each one's nearness from its own saved relations.
+        return {
+            n: 0.0 if n == priority else min(neighbor_map[n].values()) + 1.0
+            for n in one_letter_off(word, words)
+            if n in neighbor_map
+        }
+
+    stack = [[text.strip().lower()]]
+    visited = set()
+    while stack:
+        path = stack.pop()
+        word = path[-1]
+        if word == priority:
+            return path
+        if word in visited:
+            continue
+        visited.add(word)
+        # Push farthest first so the nearest neighbor is popped (explored) next.
+        for neighbor, _ in sorted(relations(word).items(), key=lambda item: (item[1], item[0]), reverse=True):
+            if neighbor not in visited:
+                stack.append(path + [neighbor])
+    return None
 
 
 def main():
@@ -146,8 +163,7 @@ def main():
         return
     try:
         is_real = is_real_word(text, words)
-        steps, parent = steps_from_priority(neighbor_map)
-        path = path_to_priority(text, neighbor_map, words, steps, parent)
+        path = path_to_priority(text, neighbor_map, words)
         if path is None:
             print(f"'{text.strip()}' can't reach '{PRIORITY_WORD}'.")
         else:
@@ -157,8 +173,10 @@ def main():
         else:
             print(f"'{text.strip()}' is NOT a real word.")
         word = text.strip().lower()
-        neighbors = neighbor_map[word] if word in neighbor_map else one_letter_off(word, words)
-        listed = [f"{n} ({steps[n]:.1f})" if n in steps else n for n in neighbors]
+        if word in neighbor_map:
+            listed = [f"{n} ({nearness:.1f})" for n, nearness in neighbor_map[word].items()]
+        else:
+            listed = one_letter_off(word, words)
         print(f"Words one letter off (steps to {PRIORITY_WORD}): {', '.join(listed) if listed else '(none)'}")
     except ValueError as e:
         print(f"Error: {e}")
